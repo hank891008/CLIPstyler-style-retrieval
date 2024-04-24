@@ -4,8 +4,9 @@ import numpy as np
 import torch
 import torch.nn
 import torch.optim as optim
-from torchvision import transforms, models
-
+from torchvision import transforms
+from torchvision.models import vgg19, VGG19_Weights
+from tqdm import tqdm
 import StyleNet
 import utils
 import clip
@@ -57,7 +58,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 assert (args.img_width%8)==0, "width must be multiple of 8"
 assert (args.img_height%8)==0, "height must be multiple of 8"
 
-VGG = models.vgg19(pretrained=True).features
+VGG = vgg19(weights=VGG19_Weights.IMAGENET1K_V1).features
 VGG.to(device)
 
 for parameter in VGG.parameters():
@@ -127,7 +128,6 @@ style_weights = {'conv1_1': 0.1,
 
 content_weight = args.lambda_c
 
-show_every = 100
 optimizer = optim.Adam(style_net.parameters(), lr=args.lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)
 steps = args.max_step
@@ -172,8 +172,8 @@ with torch.no_grad():
 
     
 num_crops = args.num_crops
-for epoch in range(0, steps+1):
-    
+progress = tqdm(range(0, steps+1))
+for epoch in progress:
     scheduler.step()
     target = style_net(content_image,use_sigmoid=True).to(device)
     target.requires_grad_(True)
@@ -203,7 +203,7 @@ for epoch in range(0, steps+1):
     
     text_direction = (text_features-text_source).repeat(image_features.size(0),1)
     text_direction /= text_direction.norm(dim=-1, keepdim=True)
-    loss_temp = (1- torch.cosine_similarity(img_direction, text_direction, dim=1))
+    loss_temp = (1 - torch.cosine_similarity(img_direction, text_direction, dim=1))
     loss_temp[loss_temp<args.thresh] =0
     loss_patch+=loss_temp.mean()
     
@@ -223,17 +223,10 @@ for epoch in range(0, steps+1):
     optimizer.zero_grad()
     total_loss.backward()
     optimizer.step()
-
+    progress.set_description(f'loss:{total_loss.item():.4f}, content:{content_loss.item():.4f}, patch:{loss_patch.item():.4f}, dir:{loss_glob.item():.4f}, tv:{reg_tv.item():.4f}')
     if epoch % 20 == 0:
-        print("After %d criterions:" % epoch)
-        print('Total loss: ', total_loss.item())
-        print('Content loss: ', content_loss.item())
-        print('patch loss: ', loss_patch.item())
-        print('dir loss: ', loss_glob.item())
-        print('TV loss: ', reg_tv.item())
-    
-    if epoch %50 ==0:
-        out_path = './outputs/'+prompt+'_'+content+'_'+exp+'.jpg'
+        file_name = prompt.replace(' ', '_') + '_' + content + '_' + exp + '.jpg'
+        out_path = './outputs/' + file_name
         output_image = target.clone()
         output_image = torch.clamp(output_image,0,1)
         output_image = adjust_contrast(output_image,1.5)
@@ -242,4 +235,5 @@ for epoch in range(0, steps+1):
                                     out_path,
                                     nrow=1,
                                     normalize=True)
+
 
