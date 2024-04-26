@@ -148,7 +148,7 @@ augment = transforms.Compose([
     transforms.RandomPerspective(fill=0, p=1,distortion_scale=0.5),
     transforms.Resize(224)
 ])
-device='cuda'
+
 clip_model, preprocess = clip.load('ViT-B/32', device, jit=False)
 
 prompt = args.text
