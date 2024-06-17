@@ -103,3 +103,28 @@ def rand_sampling_all(args):
         bbxl.append(bbx1)
         bbyl.append(bby1)
     return bbxl,bbyl
+
+def slerp(input1, input2, weight):
+    """
+    Spherical linear interpolation between two tensors.
+    
+    Args:
+        input1 (torch.Tensor): First input tensor of shape (1, 512).
+        input2 (torch.Tensor): Second input tensor of shape (1, 512).
+        weight (float): Interpolation weight between 0 and 1.
+        
+    Returns:
+        torch.Tensor: Interpolated tensor of shape (1, 512).
+    """
+    omega = torch.arccos(torch.clamp(torch.sum(input1 * input2, dim=1), min=-1.0, max=1.0))
+    so = torch.sin(omega)
+    res = (torch.sin((1.0 - weight) * omega) / so).unsqueeze(1) * input1 + (torch.sin(weight * omega) / so).unsqueeze(1) * input2
+    return res
+
+def seed_everything(seed=42):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
