@@ -20,6 +20,7 @@ import argparse
 from torchvision.transforms.functional import adjust_contrast
 
 import style_retrieval
+from utils import slerp
 
 parser = argparse.ArgumentParser()
 
@@ -53,9 +54,13 @@ parser.add_argument('--lr', type=float, default=5e-4,
                     help='Number of domains')
 parser.add_argument('--thresh', type=float, default=0.7,
                     help='Number of domains')
+parser.add_argument('--device', type=str, default='cuda',
+                    help='device')
+parser.add_argument('--alpha', type=float, default=0.5,
+                    help='alpha')
 args = parser.parse_args()
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device(args.device)
 assert (args.img_width%8)==0, "width must be multiple of 8"
 assert (args.img_height%8)==0, "height must be multiple of 8"
 
@@ -84,7 +89,7 @@ def img_normalize(image):
     return image
 
 def clip_normalize(image,device):
-    image = F.interpolate(image,size=224,mode='bicubic')
+    image = F.interpolate(image,size=224,mode='bicubic').to(device)
     mean=torch.tensor([0.48145466, 0.4578275, 0.40821073]).to(device)
     std=torch.tensor([0.26862954, 0.26130258, 0.27577711]).to(device)
     mean = mean.view(1,-1,1,1)
@@ -106,6 +111,10 @@ def get_image_prior_losses(inputs_jit):
 
 def compose_text_with_templates(text: str, templates=imagenet_templates) -> list:
     return [template.format(text) for template in templates]
+
+def compose_img(prompt, limit=5):
+    table = style_retrieval.init_dataset()
+    return style_retrieval.search(table, prompt, limit)
 
 content_path = args.content_path
 content_image = utils.load_image2(content_path, img_height=args.img_height,img_width=args.img_width)
@@ -156,21 +165,28 @@ prompt = args.text
 
 source = "a Photo"
 
-table = style_retrieval.init_dataset()
 with torch.no_grad():
-    # style img embedding
-    rs = style_retrieval.search(table, prompt)
-    retireval_image0 = utils.load_image2(rs[0]["image_uri"], img_height=args.img_height, img_width=args.img_width)
-    retireval_image1 = utils.load_image2(rs[1]["image_uri"], img_height=args.img_height, img_width=args.img_width)
-    retireval_image2 = utils.load_image2(rs[2]["image_uri"], img_height=args.img_height, img_width=args.img_width)
-    text_features = clip_model.encode_image(clip_normalize(retireval_image0, device))
-    text_features += clip_model.encode_image(clip_normalize(retireval_image1, device))
-    text_features += clip_model.encode_image(clip_normalize(retireval_image2, device))
-    text_features /= 3
-    text_features /= text_features.norm(dim=-1, keepdim=True)
+    rs = compose_img(prompt)
+    style_img_features = None
+    for i in range(len(rs)):
+        retireval_image = utils.load_image2(rs[i]['image_uri'], img_height=args.img_height, img_width=args.img_width)
+        if i == 0:
+            style_img_features = clip_model.encode_image(clip_normalize(retireval_image, device))
+        else:
+            style_img_features += clip_model.encode_image(clip_normalize(retireval_image, device))
+            
+    style_img_features /= len(rs)
+    style_img_features /= style_img_features.norm(dim=-1, keepdim=True)
     
+    # style img's content embedding
+    template_text = compose_text_with_templates(prompt, imagenet_templates)
+    tokens = clip.tokenize(template_text).to(device)
+    style_content_features = clip_model.encode_text(tokens).detach()
+    style_content_features = style_content_features.mean(axis=0, keepdim=True)
+    style_content_features /= style_content_features.norm(dim=-1, keepdim=True)
     
-    
+    text_features = slerp(style_img_features, style_content_features, args.alpha)
+
     template_source = compose_text_with_templates(source, imagenet_templates)
     tokens_source = clip.tokenize(template_source).to(device)
     text_source = clip_model.encode_text(tokens_source).detach()
@@ -244,5 +260,17 @@ for epoch in progress:
                                     out_path,
                                     nrow=1,
                                     normalize=True)
+
+file_name = prompt.replace(' ', '_') + '_' + content + '_' + exp + '.jpg'
+out_path = './outputs/' + file_name
+output_image = target.clone()
+output_image = torch.clamp(output_image,0,1)
+output_image = adjust_contrast(output_image,1.5)
+vutils.save_image(
+                            output_image,
+                            out_path,
+                            nrow=1,
+                            normalize=True)
+
 
 
