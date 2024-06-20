@@ -130,4 +130,6 @@ dmypy.json
 
 .lancedb/
 archive/
-wikiart.zip
+demo/
+demo-intp
+output_reference/
