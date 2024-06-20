@@ -261,6 +261,6 @@ for sample in range(0, args.n_samples):
 
 output_image = torch.stack(intp, dim=1)
 prompt = prompt.replace(' ', '_')
-output_name = f'./outputs-intp/{content}_{prompt}.png'
+output_name = f'./demo-intp/{content}_{prompt}.png'
 output_image = make_grid(output_image, nrow=args.n_samples)
 save_image(output_image, output_name)

@@ -251,7 +251,7 @@ for epoch in progress:
     progress.set_description(f'loss:{total_loss.item():.4f}, content:{content_loss.item():.4f}, patch:{loss_patch.item():.4f}, dir:{loss_glob.item():.4f}, tv:{reg_tv.item():.4f}')
     if epoch % 20 == 0:
         file_name = prompt.replace(' ', '_') + '_' + content + '_' + exp + '.jpg'
-        out_path = './outputs/' + file_name
+        out_path = './demo/' + file_name
         output_image = target.clone()
         output_image = torch.clamp(output_image,0,1)
         output_image = adjust_contrast(output_image,1.5)
@@ -262,7 +262,7 @@ for epoch in progress:
                                     normalize=True)
 
 file_name = prompt.replace(' ', '_') + '_' + content + '_' + exp + '.jpg'
-out_path = './outputs/' + file_name
+out_path = './demo/' + file_name
 output_image = target.clone()
 output_image = torch.clamp(output_image,0,1)
 output_image = adjust_contrast(output_image,1.5)
